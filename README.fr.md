@@ -233,3 +233,13 @@ Le script détecte automatiquement le runtime et choisit le moteur d'énumérati
 | PS 5.1 / .NET Framework 4.x | Récursion `TopDirectoryOnly` | Robuste aux dossiers inaccessibles |
 
 La ligne `[DEBUG] Moteur d'énumération :` dans le log confirme le moteur utilisé.
+
+## Changelog
+
+Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
+
+---
+
+## Licence
+
+[MIT](LICENSE) — © 2026 9 Lives IT Solutions
