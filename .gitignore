@@ -1,0 +1,11 @@
+# Script outputs — never commit logs or reports
+FilePurge_*.log
+FilePurge_*_report.csv
+
+# Windows
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# VS Code
+.vscode/
