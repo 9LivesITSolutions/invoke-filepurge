@@ -84,8 +84,13 @@ Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 |---|---|---|---|
 | `-Parallel` | `switch` | — | Process rules concurrently |
 | `-ThrottleLimit` | `int` | `4` | Max concurrent rules (1–32) |
-| `-OldestFirst` | `switch` | — | Sort candidates oldest-first before deleting (external sort, O(1) RAM) |
-| `-LogEachFile` | `switch` | — | Log every deleted file (disabled by default on large volumes) |
+
+### Deletion behavior (PS 5.1 and PS 7+)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `-OldestFirst` | `switch` | — | External sort — delete oldest files first. O(1) RAM via 100k-record temp chunks. |
+| `-LogEachFile` | `switch` | — | Log every deleted file. Disabled by default on large volumes to avoid multi-GB logs. |
 
 ---
 
@@ -270,9 +275,9 @@ Files are deleted inline during enumeration. No in-memory collection.
 | OOM risk | None |
 | Progress log | Every 100,000 files |
 
-### OldestFirst — external sort, O(1) RAM
+### OldestFirst — external sort, O(1) RAM — PS 5.1 and PS 7+
 
-Candidates are written to sorted temp chunks (100,000 records each), then merged and deleted oldest-first. Useful when deletion order matters (e.g. with a volume quota).
+Candidates are written to sorted temp chunks (100,000 records each), then merged and deleted oldest-first. Useful when deletion order matters (e.g. with a volume quota). Compatible with both PS 5.1 and PS 7+.
 
 ```powershell
 .\Invoke-FilePurge.ps1 -ConfigFile "C:\Scripts\purge-rules.json" -OldestFirst
@@ -299,6 +304,9 @@ By default, individual deletions are **not** logged to avoid multi-GB log files 
 
 The CSV report always contains the full list of deleted files regardless of `-LogEachFile`.
 
+
+---
+
 ## Exit Codes
 
 | Code | Meaning | Recommended action |
@@ -320,13 +328,19 @@ The CSV report always contains the full list of deleted files regardless of `-Lo
 ### Log format
 
 ```
-2026-01-15 03:00:01 === [SECTION] INVOKE-FILEPURGE v3.1.0  --  REAL MODE
+2026-01-15 03:00:01 === [SECTION] INVOKE-FILEPURGE v3.3.4  --  REAL MODE
 2026-01-15 03:00:01     [INFO]    Execution     : Parallel (ThrottleLimit: 4)
 2026-01-15 03:00:01     [INFO]    Rules loaded  : 5 path(s) to process
 2026-01-15 03:00:01 === [SECTION] RULE: C:\inetpub\logs\LogFiles
 2026-01-15 03:00:01     [INFO]      Age         : 90 days (LastWriteTime) -- cutoff: 2025-10-17
 2026-01-15 03:00:45 ... [DEBUG]   Enumeration engine: .NET EnumerationOptions (PS7+)
-2026-01-15 03:01:12 [+] [SUCCESS] Deleted: C:\inetpub\logs\LogFiles\u_ex230402.log  (age: 287d, 2.14 MB)
+2026-01-15 03:00:46 ... [DEBUG]   100 000 files scanned, 12 847 deleted, 2.31 GB...
+2026-01-15 03:01:00     [INFO]    Scan complete: 45 231 scanned, 12 847 candidates, 12 847 deleted, 2.31 GB.
+```
+
+> **Note:** `[SUCCESS] Deleted: ...` lines per file require `-LogEachFile`. By default only progress every 100,000 files is logged.
+
+```
 ```
 
 ---

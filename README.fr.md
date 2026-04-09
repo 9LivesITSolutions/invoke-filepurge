@@ -84,8 +84,13 @@ Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 |---|---|---|---|
 | `-Parallel` | `switch` | — | Traite les règles en parallèle |
 | `-ThrottleLimit` | `int` | `4` | Nombre max de règles simultanées (1–32) |
-| `-OldestFirst` | `switch` | — | Trie les candidats du plus ancien au plus récent avant suppression (tri externe, O(1) RAM) |
-| `-LogEachFile` | `switch` | — | Logue chaque fichier supprimé (désactivé par défaut sur les gros volumes) |
+
+### Comportement de suppression (PS 5.1 et PS 7+)
+
+| Paramètre | Type | Défaut | Description |
+|---|---|---|---|
+| `-OldestFirst` | `switch` | — | Tri externe — supprime les fichiers les plus anciens en premier. O(1) RAM via chunks de 100 000 enregistrements. |
+| `-LogEachFile` | `switch` | — | Logue chaque fichier supprimé. Désactivé par défaut sur les gros volumes pour éviter des logs de plusieurs Go. |
 
 ---
 
@@ -246,9 +251,9 @@ Suppression inline pendant l'énumération — aucune collection en mémoire.
 | Risque OOM | Aucun |
 | Log progression | Tous les 100 000 fichiers |
 
-### OldestFirst — tri externe, O(1) RAM
+### OldestFirst — tri externe, O(1) RAM — PS 5.1 et PS 7+
 
-Les candidats sont écrits dans des fichiers temporaires triés (chunks de 100 000 enregistrements), puis fusionnés et supprimés du plus ancien au plus récent. Utile quand l'ordre de suppression compte (ex. avec un quota volume).
+Les candidats sont écrits dans des fichiers temporaires triés (chunks de 100 000 enregistrements), puis fusionnés et supprimés du plus ancien au plus récent. Compatible PS 5.1 et PS 7+. Utile quand l'ordre de suppression compte (ex. avec un quota volume).
 
 ```powershell
 .\Invoke-FilePurge.ps1 -ConfigFile "C:\Scripts\purge-rules.json" -OldestFirst
@@ -274,6 +279,9 @@ Par défaut, les suppressions individuelles ne sont **pas** loguées pour évite
 ```
 
 Le rapport CSV contient toujours la liste complète des fichiers supprimés, indépendamment de `-LogEachFile`.
+
+
+---
 
 ## Codes de sortie
 
