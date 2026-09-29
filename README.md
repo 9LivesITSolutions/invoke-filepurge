@@ -4,7 +4,7 @@
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)
-![Version](https://img.shields.io/badge/Version-3.3.4-green)
+![Version](https://img.shields.io/badge/Version-3.3.6-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 Production-grade PowerShell script for **automated file purging** on Windows environments. JSON-driven per-path rule engine, parallel processing (PS7+), Task Scheduler ready. Compatible with PS 5.1 and PS 7+.
@@ -91,6 +91,7 @@ Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 |---|---|---|---|
 | `-OldestFirst` | `switch` | — | External sort — delete oldest files first. O(1) RAM via 100k-record temp chunks. |
 | `-LogEachFile` | `switch` | — | Log every deleted file. Disabled by default on large volumes to avoid multi-GB logs. |
+| `-NoRecurse` | `switch` | — | Process root folder only — skip all subfolders. Useful for flat archives with millions of files. |
 
 ---
 
@@ -119,6 +120,7 @@ The JSON file has two sections: `global` (shared defaults) and `rules` (per-path
     {
       "Path"                : "E:\\Interfaces\\HL7\\Archive",
       "AgeDays"             : 30,
+      "NoRecurse"           : true,
       "IncludeNamePatterns" : ["^Old_[0-9]{2}-[0-9]{2}-[0-9]{4}.*[.]txt$"]
     }
   ]
@@ -140,6 +142,7 @@ The JSON file has two sections: `global` (shared defaults) and `rules` (per-path
 | `MaxDeleteMB` | long | Per-rule volume quota in MB |
 | `MaxFiles` | long | Per-rule file count quota |
 | `PurgeEmptyFolders` | bool | Remove empty folders after purge |
+| `NoRecurse` | bool | Process root folder only — skip all subfolders |
 
 ### PS5.1 JSON compatibility rules
 
