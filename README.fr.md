@@ -4,7 +4,7 @@
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)
-![Version](https://img.shields.io/badge/Version-3.3.4-green)
+![Version](https://img.shields.io/badge/Version-3.3.6-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 Script PowerShell de **purge automatisée de fichiers** pour les environnements Windows. Moteur de règles JSON par chemin, traitement parallèle (PS7+), conçu pour les tâches planifiées. Compatible PS 5.1 et PS 7+.
@@ -91,6 +91,7 @@ Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 |---|---|---|---|
 | `-OldestFirst` | `switch` | — | Tri externe — supprime les fichiers les plus anciens en premier. O(1) RAM via chunks de 100 000 enregistrements. |
 | `-LogEachFile` | `switch` | — | Logue chaque fichier supprimé. Désactivé par défaut sur les gros volumes pour éviter des logs de plusieurs Go. |
+| `-NoRecurse` | `switch` | — | Traite uniquement le dossier racine — ignore tous les sous-dossiers. Utile pour les archives plates avec des millions de fichiers. |
 
 ---
 
@@ -119,6 +120,7 @@ Le fichier JSON contient deux sections : `global` (valeurs partagées) et `rules
     {
       "Path"                : "E:\\Interfaces\\HL7\\Archive",
       "AgeDays"             : 30,
+      "NoRecurse"           : true,
       "IncludeNamePatterns" : ["^Old_[0-9]{2}-[0-9]{2}-[0-9]{4}.*[.]txt$"]
     }
   ]
@@ -140,6 +142,7 @@ Le fichier JSON contient deux sections : `global` (valeurs partagées) et `rules
 | `MaxDeleteMB` | long | Quota volume en Mo par règle |
 | `MaxFiles` | long | Quota fichiers par règle |
 | `PurgeEmptyFolders` | bool | Supprime les dossiers vides après purge |
+| `NoRecurse` | bool | Traite uniquement le dossier racine — ignore tous les sous-dossiers |
 
 ### Règles de compatibilité JSON PS5.1
 
