@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Automated file purge -- JSON rule engine, parallel processing (PS7+), Task Scheduler ready.
@@ -87,9 +87,13 @@
     # CLI mode (v2.x compatible)
     .\Invoke-FilePurge.ps1 -TargetPath "D:\Logs" -AgeDays 90 -IncludeExtensions '.log' -WhatIf
 
+
+.PARAMETER NoRecurse
+    Process files in the target root folder only. Subfolders are skipped entirely.
+
 .NOTES
     Author        : 9 Lives IT Solutions -- production-grade PowerShell
-    Version       : 3.3.2
+    Version       : 3.3.6
     Compatibility : Windows Server 2016+ / PS 5.1 / PS 7+
     Exit codes    :
         0  = Success
@@ -140,7 +144,16 @@ param (
     [int] $ThrottleLimit = 4,
 
     # -- Sorted deletion (uses more memory) -----------------------------------
-    [switch] $OldestFirst
+    [switch] $OldestFirst,
+
+    # -- Per-file log verbosity -----------------------------------------------
+    # By default individual deletions are NOT logged (1 write/file = slow on large volumes).
+    # -LogEachFile re-enables per-file SUCCESS logging. Progress every 100k is always logged.
+    [switch] $LogEachFile,
+
+    # -- Recursion ------------------------------------------------------------
+    # -NoRecurse: process files in the root folder only, skip all subfolders.
+    [switch] $NoRecurse
 )
 
 Set-StrictMode -Version Latest
@@ -151,7 +164,7 @@ $ErrorActionPreference = 'Stop'
 # =============================================================================
 #region Init
 
-$Script:Version   = '3.3.2'
+$Script:Version   = '3.3.6'
 $Script:StartTime = Get-Date
 $Script:IsWhatIf  = $WhatIfPreference -or ($PSBoundParameters.ContainsKey('WhatIf'))
 $Script:ExitCode  = 0
@@ -209,6 +222,14 @@ $Timestamp  = $Script:StartTime.ToString('yyyyMMdd_HHmmss')
 $LogFile    = Join-Path $LogPath "FilePurge_$Timestamp.log"
 $ReportFile = Join-Path $LogPath "FilePurge_$Timestamp`_report.csv"
 
+# Persistent StreamWriter for main log -- one open/close per run instead of per line
+$Script:LogWriter = [System.IO.StreamWriter]::new(
+    $LogFile,
+    $false,
+    [System.Text.Encoding]::UTF8
+)
+$Script:LogWriter.AutoFlush = $true
+
 # -- Global counters (merged from all rule results after execution) -----------
 $GlobalStats = [PSCustomObject]@{
     FilesScanned   = [long] 0
@@ -256,7 +277,14 @@ function Write-Log {
     }
     catch [System.ObjectDisposedException] { }
     catch { }
-    try { Add-Content -Path $File -Value $line -Encoding UTF8 }
+    try {
+        if ($null -ne $Script:LogWriter -and $File -eq $LogFile) {
+            $Script:LogWriter.WriteLine($line)
+        }
+        else {
+            Add-Content -Path $File -Value $line -Encoding UTF8
+        }
+    }
     catch { }
     finally {
         if ($mutexAcquired) {
@@ -381,8 +409,11 @@ function Resolve-PurgeRules {
             $rMaxMB       = [long] (Get-JsonProp $r 'MaxDeleteMB'        (Get-JsonProp $g 'MaxDeleteMB'        $MaxDeleteMB))
             $rMaxFiles    = [long] (Get-JsonProp $r 'MaxFiles'           (Get-JsonProp $g 'MaxFiles'           $MaxFiles))
 
-            if ($PSBoundParameters.ContainsKey('MaxDeleteMB')) { $rMaxMB   = $MaxDeleteMB }
-            if ($PSBoundParameters.ContainsKey('MaxFiles'))    { $rMaxFiles = $MaxFiles    }
+            $rNoRecurse   = [bool] (Get-JsonProp $r 'NoRecurse' (Get-JsonProp $g 'NoRecurse' ([bool]$NoRecurse)))
+
+            if ($PSBoundParameters.ContainsKey('MaxDeleteMB')) { $rMaxMB      = $MaxDeleteMB }
+            if ($PSBoundParameters.ContainsKey('MaxFiles'))    { $rMaxFiles   = $MaxFiles    }
+            if ($PSBoundParameters.ContainsKey('NoRecurse'))   { $rNoRecurse  = [bool]$NoRecurse }
 
             $rInclExt  = Normalize-Extensions (Get-JsonArray $r 'IncludeExtensions'   (Get-JsonArray $g 'IncludeExtensions'))
             $rExclExt  = Normalize-Extensions (Get-JsonArray $r 'ExcludeExtensions'   (Get-JsonArray $g 'ExcludeExtensions'))
@@ -402,6 +433,7 @@ function Resolve-PurgeRules {
                 MaxDeleteMB         = $rMaxMB
                 MaxFiles            = $rMaxFiles
                 PurgeEmptyFolders   = $rPurgeEmpty
+                NoRecurse           = $rNoRecurse
                 HasInclExt          = (Test-RuleArray $rInclExt)
                 HasExclExt          = (Test-RuleArray $rExclExt)
                 HasInclName         = (Test-RuleArray $rInclName)
@@ -427,6 +459,7 @@ function Resolve-PurgeRules {
                 MaxDeleteMB         = $MaxDeleteMB
                 MaxFiles            = $MaxFiles
                 PurgeEmptyFolders   = [bool] $PurgeEmptyFolders
+                NoRecurse           = [bool] $NoRecurse
                 HasInclExt          = (Test-RuleArray $normInclude)
                 HasExclExt          = (Test-RuleArray $normExclude)
                 HasInclName         = $false
@@ -519,7 +552,9 @@ function Invoke-RecurseEnum51 {
                     else {
                         try {
                             Remove-Item -LiteralPath $fi.FullName -Force -ErrorAction Stop
-                            Write-Log "Deleted: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level SUCCESS -File $script:ps51_LogFile
+                            if ($script:ps51_LogEachFile) {
+                                Write-Log "Deleted: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level SUCCESS -File $script:ps51_LogFile
+                            }
                             $script:ps51_Stats.FilesDeleted++
                             $script:ps51_Stats.BytesDeleted += $fi.Length
                             $script:ps51_Report.Add([PSCustomObject]@{
@@ -587,7 +622,9 @@ function Invoke-PurgeRule {
         [string]         $RuleLogFile,
         [bool]           $IsWhatIf,
         [datetime]       $StartTime,
-        [bool]           $OldestFirst = $false
+        [bool]           $OldestFirst = $false,
+        [bool]           $LogEachFile = $false,
+        [bool]           $NoRecurse   = $false
     )
 
     $result = [PSCustomObject]@{
@@ -607,6 +644,10 @@ function Invoke-PurgeRule {
     $cutoffDate = $StartTime.AddDays(-$Rule.AgeDays)
     $maxBytes   = $Rule.MaxDeleteMB * 1MB
     $dateField  = if ($Rule.UseCreationTime) { 'CreationTime' } else { 'LastWriteTime' }
+    # NoRecurse: rule-level property takes precedence; falls back to the caller's bool param
+    $noRec      = if ($null -ne ($Rule | Get-Member -Name 'NoRecurse' -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
+                      [bool] $Rule.NoRecurse
+                  } else { $NoRecurse }
 
     # -- Rule header ----------------------------------------------------------
     Write-Log ('-' * 70) -Level SECTION -File $RuleLogFile
@@ -619,6 +660,7 @@ function Invoke-PurgeRule {
     Write-Log "  Excl. path rx  : $(if ($Rule.HasExclPat)  { $Rule.ExcludePatterns     -join ' | ' } else { '(none)' })" -File $RuleLogFile
     Write-Log "  Volume quota   : $(Format-Bytes $maxBytes)  |  File quota: $($Rule.MaxFiles)" -File $RuleLogFile
     Write-Log "  Empty folders  : $(if ($Rule.PurgeEmptyFolders) { 'YES' } else { 'NO' })" -File $RuleLogFile
+    Write-Log "  Recursion      : $(if ($noRec) { 'NO -- root folder only' } else { 'YES -- full subtree' })" -File $RuleLogFile
     $modeLabel = if ($IsWhatIf) { 'SIMULATION -- first 1000 matches logged' }
                   elseif ($OldestFirst) { 'OLDEST-FIRST -- candidates collected in memory then sorted' }
                   else { 'STREAMING DELETE -- O(1) memory, filesystem order' }
@@ -663,7 +705,7 @@ function Invoke-PurgeRule {
         try {
             if ($PSVersionTable.PSVersion.Major -ge 7) {
                 $enumOpts2 = [System.IO.EnumerationOptions]::new()
-                $enumOpts2.RecurseSubdirectories = $true
+                $enumOpts2.RecurseSubdirectories = (-not $noRec)
                 $enumOpts2.IgnoreInaccessible    = $true
                 $enumOpts2.AttributesToSkip      = [System.IO.FileAttributes]::System -bor [System.IO.FileAttributes]::ReparsePoint
                 foreach ($fi in ([System.IO.DirectoryInfo]::new($root)).EnumerateFiles('*', $enumOpts2)) {
@@ -693,11 +735,13 @@ function Invoke-PurgeRule {
                 $script:ps51_DiagOldest  = [DateTime]::MaxValue
                 $script:ps51_DiagNewest  = [DateTime]::MinValue
                 $script:ps51_DiagDone    = $false
+            $script:ps51_LogEachFile = $LogEachFile
                 # Override: intercept each match into chunk instead of reporting
                 # Use ps51_IsWhatIf=true so Invoke-RecurseEnum51 counts but doesn't delete.
                 # After, iterate $result.FilesMatched records -- but we have no list.
                 # PS5.1 path: collect to chunk inline by re-implementing scan here.
-                $files51 = [System.IO.Directory]::EnumerateFiles($root, '*', [System.IO.SearchOption]::AllDirectories)
+                $opt51 = if ($noRec) { [System.IO.SearchOption]::TopDirectoryOnly } else { [System.IO.SearchOption]::AllDirectories }
+                $files51 = [System.IO.Directory]::EnumerateFiles($root, '*', $opt51)
                 foreach ($fp in $files51) {
                     $result.FilesScanned++
                     try {
@@ -824,7 +868,7 @@ function Invoke-PurgeRule {
 
             Write-Log "Enumeration engine: .NET EnumerationOptions (PS7+)" -Level DEBUG -File $RuleLogFile
             $enumOptions = [System.IO.EnumerationOptions]::new()
-            $enumOptions.RecurseSubdirectories = $true
+            $enumOptions.RecurseSubdirectories = (-not $noRec)
             $enumOptions.IgnoreInaccessible    = $true
             $enumOptions.AttributesToSkip      = [System.IO.FileAttributes]::System -bor
                                                  [System.IO.FileAttributes]::ReparsePoint
@@ -863,7 +907,9 @@ function Invoke-PurgeRule {
                         else {
                             try {
                                 Remove-Item -LiteralPath $fi.FullName -Force -ErrorAction Stop
-                                Write-Log "Deleted: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level SUCCESS -File $RuleLogFile
+                                if ($LogEachFile) {
+                                    Write-Log "Deleted: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level SUCCESS -File $RuleLogFile
+                                }
                                 $result.FilesDeleted++
                                 $result.BytesDeleted += $fi.Length
                                 $result.ReportEntries.Add([PSCustomObject]@{
@@ -904,8 +950,62 @@ function Invoke-PurgeRule {
             $script:ps51_DiagOldest  = [DateTime]::MaxValue
             $script:ps51_DiagNewest  = [DateTime]::MinValue
             $script:ps51_DiagDone    = $false
+            $script:ps51_LogEachFile = $LogEachFile
 
-            Invoke-RecurseEnum51 -DirPath $root
+            if ($noRec) {
+                # Root folder only -- single EnumerateFiles call, no recursion
+                $files51flat = [System.IO.Directory]::EnumerateFiles(
+                    $root, '*', [System.IO.SearchOption]::TopDirectoryOnly)
+                foreach ($fp in $files51flat) {
+                    $result.FilesScanned++
+                    try {
+                        $fi = [System.IO.FileInfo]::new($fp)
+                        if ($fi.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+                        $rd = if ($Rule.UseCreationTime) { $fi.CreationTime } else { $fi.LastWriteTime }
+                        if ($rd -lt $script:ps51_DiagOldest) { $script:ps51_DiagOldest = $rd }
+                        if ($rd -gt $script:ps51_DiagNewest) { $script:ps51_DiagNewest = $rd }
+                        if ($rd -lt $cutoffDate -and (Test-ShouldInclude $fi $Rule)) {
+                            $result.FilesMatched++
+                            # quota check
+                            if ($result.FilesDeleted -ge $Rule.MaxFiles -or
+                                $result.BytesDeleted + $fi.Length -gt $maxBytes) {
+                                Write-Log "Quota reached. Stopping." -Level WARN -File $RuleLogFile
+                                $result.QuotaReached = $true; break
+                            }
+                            $age = [math]::Round(($StartTime - $rd).TotalDays, 1)
+                            if ($IsWhatIf) {
+                                if ($result.FilesMatched -le 1000) {
+                                    Write-Log "[WHATIF] Would delete: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level DEBUG -File $RuleLogFile
+                                }
+                                $result.FilesDeleted++; $result.BytesDeleted += $fi.Length
+                            }
+                            else {
+                                try {
+                                    Remove-Item -LiteralPath $fi.FullName -Force -ErrorAction Stop
+                                    if ($LogEachFile) { Write-Log "Deleted: $($fi.FullName)  (age: ${age}d, $(Format-Bytes $fi.Length))" -Level SUCCESS -File $RuleLogFile }
+                                    $result.FilesDeleted++; $result.BytesDeleted += $fi.Length
+                                    $result.ReportEntries.Add([PSCustomObject]@{
+                                        Path = $fi.FullName; AgeDays = $age; SizeBytes = $fi.Length
+                                        DeletedAt = (Get-Date -Format 'o'); Status = 'Deleted'
+                                    })
+                                }
+                                catch {
+                                    Write-Log "ERROR: $($fi.FullName) -- $($_.Exception.Message)" -Level ERROR -File $RuleLogFile
+                                    $result.FilesErrored++
+                                    if ($result.ExitCode -lt 3) { $result.ExitCode = 3 }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                    if ($result.FilesScanned % 100000 -eq 0) {
+                        Write-Log "$($result.FilesScanned.ToString('N0')) files scanned, $($result.FilesDeleted.ToString('N0')) deleted..." -Level DEBUG -File $RuleLogFile
+                    }
+                }
+            }
+            else {
+                Invoke-RecurseEnum51 -DirPath $root
+            }
 
             if ($result.FilesScanned -gt 0) {
                 $dateF     = if ($Rule.UseCreationTime) { 'CreationTime' } else { 'LastWriteTime' }
@@ -1061,7 +1161,9 @@ try {
             "function Invoke-PurgeRule { $( ${function:Invoke-PurgeRule} ) }"
         ) -join "`n")
         $capturedIsWhatIf     = $Script:IsWhatIf
-        $capturedOldestFirst = [bool]$OldestFirst
+        $capturedOldestFirst  = [bool]$OldestFirst
+        $capturedLogEachFile = [bool]$LogEachFile
+        $capturedNoRecurse   = [bool]$NoRecurse
         $capturedStartTime = $Script:StartTime
         $capturedLogPath   = $LogPath
     }
@@ -1085,7 +1187,9 @@ try {
                 -RuleLogFile $tempLog `
                 -IsWhatIf    $using:capturedIsWhatIf `
                 -StartTime   $using:capturedStartTime `
-                -OldestFirst $using:capturedOldestFirst
+                -OldestFirst $using:capturedOldestFirst `
+                -LogEachFile $using:capturedLogEachFile `
+                -NoRecurse   $using:capturedNoRecurse
 
             $Script:LogMutex.Dispose()
 
@@ -1102,7 +1206,9 @@ try {
                 -RuleLogFile $LogFile `
                 -IsWhatIf    $Script:IsWhatIf `
                 -StartTime   $Script:StartTime `
-                -OldestFirst ([bool]$OldestFirst)
+                -OldestFirst ([bool]$OldestFirst) `
+                -LogEachFile ([bool]$LogEachFile) `
+                -NoRecurse   ([bool]$NoRecurse)
         }
     }
 
@@ -1180,6 +1286,8 @@ finally {
     # Write-Log uses the mutex -- MUST be called before Dispose()
     Write-Log "Full log: $LogFile"
     try { $Script:LogMutex.Dispose() } catch { }
+    # Flush and close StreamWriter after last Write-Log
+    try { if ($null -ne $Script:LogWriter) { $Script:LogWriter.Dispose() } } catch { }
     exit $Script:ExitCode
 }
 
