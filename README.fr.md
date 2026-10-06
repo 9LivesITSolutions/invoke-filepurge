@@ -1,11 +1,17 @@
-# Invoke-FilePurge.ps1
+# Invoke-FilePurge
 
-> 🇬🇧 [English version available](README.md)
+> Script de purge automatisée de fichiers pour Windows — journalisation structurée, quotas de sécurité, compatible Planificateur de tâches.
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)
 ![Version](https://img.shields.io/badge/Version-3.3.6-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+
+[English version](README.md)
+
+---
+
+## Présentation
 
 Script PowerShell de **purge automatisée de fichiers** pour les environnements Windows. Moteur de règles JSON par chemin, traitement parallèle (PS7+), conçu pour les tâches planifiées. Compatible PS 5.1 et PS 7+.
 
@@ -45,6 +51,8 @@ Script PowerShell de **purge automatisée de fichiers** pour les environnements 
 ## Installation
 
 ```powershell
+git clone https://github.com/9LivesITSolutions/Invoke-FilePurge.git
+cd Invoke-FilePurge
 Copy-Item Invoke-FilePurge.ps1 C:\Scripts\
 Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 ```
@@ -283,7 +291,6 @@ Par défaut, les suppressions individuelles ne sont **pas** loguées pour évite
 
 Le rapport CSV contient toujours la liste complète des fichiers supprimés, indépendamment de `-LogEachFile`.
 
-
 ---
 
 ## Codes de sortie
@@ -319,6 +326,41 @@ Les messages du log sont en **anglais**.
 
 ---
 
+## Limites
+
+- `-Parallel` nécessite PowerShell 7+ ; sous PowerShell 5.1, le script repasse en exécution séquentielle avec un avertissement.
+- Sous PowerShell 5.1, la configuration JSON doit respecter les règles de compatibilité décrites plus haut (pas de virgule finale, pas de `\d` dans les expressions régulières, pas de BOM).
+- L'enregistrement de la source du journal d'événements Windows nécessite les droits administrateur à la première exécution.
+- En mode streaming (par défaut), les fichiers sont supprimés dans l'ordre du système de fichiers. Utiliser `-OldestFirst` lorsqu'un quota de volume est actif et que les fichiers les plus récents doivent être conservés.
+
+---
+
+## Structure du projet
+
+```
+Invoke-FilePurge/
+├── Invoke-FilePurge.ps1   # Script principal
+├── README.md
+├── README.fr.md
+├── CHANGELOG.md
+├── LICENSE
+└── .gitignore
+```
+
+---
+
+## Contribuer
+
+1. Forker le dépôt
+2. Créer une branche (`git checkout -b feature/ma-fonctionnalite`)
+3. Commiter (`git commit -m 'feat: add ma-fonctionnalite'`)
+4. Pousser la branche (`git push origin feature/ma-fonctionnalite`)
+5. Ouvrir une Pull Request
+
+Merci de suivre les [Conventional Commits](https://www.conventionalcommits.org/) pour les messages de commit.
+
+---
+
 ## Changelog
 
 Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
@@ -327,4 +369,8 @@ Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
 
 ## Licence
 
-[MIT](LICENSE) — © 2026 9 Lives IT Solutions
+Ce projet est distribué sous licence MIT. Voir le fichier [LICENSE](LICENSE).
+
+---
+
+Maintenu par **9 Lives IT Solutions** — Informatique de santé & automatisation d'infrastructure.

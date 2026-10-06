@@ -1,11 +1,17 @@
-# Invoke-FilePurge.ps1
+# Invoke-FilePurge
 
-> 🇫🇷 [Version française disponible](README.fr.md)
+> Automated file purge script for Windows environments — structured logging, quota safety, Task Scheduler ready.
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)
 ![Version](https://img.shields.io/badge/Version-3.3.6-green)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+
+[Version française](README.fr.md)
+
+---
+
+## Overview
 
 Production-grade PowerShell script for **automated file purging** on Windows environments. JSON-driven per-path rule engine, parallel processing (PS7+), Task Scheduler ready. Compatible with PS 5.1 and PS 7+.
 
@@ -45,6 +51,8 @@ Production-grade PowerShell script for **automated file purging** on Windows env
 ## Installation
 
 ```powershell
+git clone https://github.com/9LivesITSolutions/Invoke-FilePurge.git
+cd Invoke-FilePurge
 Copy-Item Invoke-FilePurge.ps1 C:\Scripts\
 Unblock-File -Path C:\Scripts\Invoke-FilePurge.ps1
 ```
@@ -307,7 +315,6 @@ By default, individual deletions are **not** logged to avoid multi-GB log files 
 
 The CSV report always contains the full list of deleted files regardless of `-LogEachFile`.
 
-
 ---
 
 ## Exit Codes
@@ -348,6 +355,41 @@ The CSV report always contains the full list of deleted files regardless of `-Lo
 
 ---
 
+## Limitations
+
+- `-Parallel` requires PowerShell 7+; on PowerShell 5.1 the script falls back to sequential execution with a warning.
+- With PowerShell 5.1, the JSON configuration must follow the compatibility rules listed above (no trailing comma, no `\d` in regex strings, no BOM).
+- Registering the Windows Event Log source requires administrator rights on the first run.
+- In streaming mode (default), files are deleted in filesystem order. Use `-OldestFirst` when a volume quota is active and the most recent files must be kept.
+
+---
+
+## Project Structure
+
+```
+Invoke-FilePurge/
+├── Invoke-FilePurge.ps1   # Main script
+├── README.md
+├── README.fr.md
+├── CHANGELOG.md
+├── LICENSE
+└── .gitignore
+```
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'feat: add my-feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
+
+---
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history.
@@ -356,4 +398,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## License
 
-[MIT](LICENSE) — © 2026 9 Lives IT Solutions
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+Maintained by **9 Lives IT Solutions** — Healthcare IT & Infrastructure Automation.
